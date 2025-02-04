@@ -1,5 +1,5 @@
 # 基础镜像（已支持多架构）
-FROM docker.io/python:3.11-slim-bullseye
+FROM --platform=linux/arm64 docker.io/python:3.11-slim-bullseye AS builder
 
 MAINTAINER myh
 # 增加语言utf-8
