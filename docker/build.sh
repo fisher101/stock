@@ -1,18 +1,60 @@
-#!/bin/sh
+#!/bin/bash
+set -e
 
-rm -rf stock
-rsync -av --progress ../../stock . --exclude .git --exclude .idea --exclude *.md --exclude *.bat --exclude __pycache__ --exclude .gitignore --exclude stock/cron --exclude stock/img --exclude stock/docker --exclude instock/cache --exclude instock/log --exclude instock/test
-rm -rf cron
+# 清理旧文件
+rm -rf stock cron
+echo "已清除旧构建文件"
+
+# 同步项目代码（排除不需要的目录）
+rsync -av --delete --exclude-from=<(cat <<EOF
+.git
+.idea
+*.md
+*.bat
+__pycache__
+.gitignore
+stock/cron
+stock/img
+stock/docker
+instock/cache
+instock/log
+instock/test
+EOF
+) ../../stock .
+
+# 单独复制cron配置
 cp -r ../../stock/cron .
 
-DOCKER_NAME=mayanghua/instock
-TAG1=$(date "+%Y%m")
-TAG2=latest
+# 镜像标签配置
+DOCKER_REGISTRY="fisher101"
+IMAGE_NAME="instock"
+DATE_TAG=$(date "+%Y%m%d")
+ARM_TAG="arm64"
 
-echo " docker build -f Dockerfile -t ${DOCKER_NAME} ."
-docker build -f Dockerfile -t ${DOCKER_NAME}:${TAG1} -t ${DOCKER_NAME}:${TAG2} .
+# 构建参数
+PLATFORM="linux/arm64"
+BUILDX_NAME="arm64_builder"
+
+# 初始化构建环境
+if ! docker buildx inspect $BUILDX_NAME &> /dev/null; then
+    docker buildx create --name $BUILDX_NAME --driver docker-container --platform $PLATFORM
+    echo "已创建构建器：$BUILDX_NAME"
+fi
+docker buildx use $BUILDX_NAME
+
+# 执行构建
+echo "开始构建 ARM64 镜像..."
+docker buildx build \
+    --platform $PLATFORM \
+    --tag $DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-$DATE_TAG \
+    --tag $DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-latest \
+    --push \
+    --progress=plain \
+    --cache-from type=registry,ref=$DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-latest \
+    --cache-to type=registry,ref=$DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-latest,mode=max \
+    .
+
 echo "#################################################################"
-echo " docker push ${DOCKER_NAME} "
-
-docker push ${DOCKER_NAME}:${TAG1}
-docker push ${DOCKER_NAME}:${TAG2}
+echo " 镜像构建推送完成"
+echo " 最新标签: $DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-latest"
+echo " 日期标签: $DOCKER_REGISTRY/$IMAGE_NAME:$ARM_TAG-$DATE_TAG"
