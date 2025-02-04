@@ -1,5 +1,8 @@
 # 基础镜像（已支持多架构）
-FROM docker.io/python:3.11-slim-bullseye
+FROM --platform=$BUILDPLATFORM docker.io/python:3.11-slim-bullseye as builder
+# ... 构建阶段 ...
+FROM --platform=linux/arm64 docker.io/python:3.11-slim-bullseye
+COPY --from=builder /install /usr/local
 
 MAINTAINER myh
 # 区域设置
